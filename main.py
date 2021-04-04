@@ -24,6 +24,11 @@ N_STEPS = 200
 UPDATE_TRAIL_FRAMES = 1
 SKIP_FRAMES = 5
 
+# Pre-calculations
+ACCURACY = 3
+SD_SIN = [int(SENSE_DIST * np.sin(phi)) for phi in np.linspace(0, 2*np.pi, 1 + int(10**ACCURACY * 2 * np.pi))]
+SD_COS = [int(SENSE_DIST * np.cos(phi)) for phi in np.linspace(0, 2*np.pi, 1 + int(10**ACCURACY * 2 * np.pi))]
+
 
 class Slime:
     def __init__(self, id, trail_map, lat_speed, rot_speed, rot_random, sense_angle, sense_dist, spawn_radius):
@@ -56,16 +61,27 @@ class Slime:
         self.y = int(np.cos(angle)*radius + self.grid_shape[1]/2)
 
     def update(self, trail, verbose=False):
+        t0 = datetime.now()
         sensor_values = self.sense(trail, verbose)
+        t1 = datetime.now()
         self.turn(sensor_values)
+        t2 = datetime.now()
         self.move()
+        t3 = datetime.now()
         self.deposit(trail)
+        t4 = datetime.now()
+
+        self.t1 += (t1 - t0).total_seconds()
+        self.t2 += (t2 - t1).total_seconds()
+        self.t3 += (t3 - t2).total_seconds()
+        self.t4 += (t4 - t3).total_seconds()
 
     def sense(self, trail_map, verbose=False):
         sensor_values = np.zeros((3, ))
         for i, angle in enumerate(self.sensors):
-            x = int(self.x + self.sense_dist * np.sin(self.phi + angle))
-            y = int(self.y + self.sense_dist * np.cos(self.phi + angle))
+            phi = int((10**ACCURACY) * ((self.phi + angle) % (2 * np.pi)))
+            x = self.x + SD_SIN[phi]
+            y = self.y + SD_COS[phi]
 
             if 0 < x < self.grid_shape[0] and 0 < y < self.grid_shape[1]:
                 sensor_values[i] = trail_map.values[(x, y)]
@@ -169,7 +185,19 @@ for i in tqdm(range(N_STEPS)):
 dt_simulation = (datetime.now()-t_start).total_seconds()
 print(f'Time taken: {dt_simulation/N_STEPS}s per step')
 
+t_sense = t_turn = t_move = t_deposit = 0
+for slime in slimes:
+    t_sense += slime.t1
+    t_turn += slime.t2
+    t_move += slime.t3
+    t_deposit += slime.t4
+
 print(f'Slime update: {t_slime:.1f}s')
+print(f'--- Sense: {t_sense:.1f}s')
+print(f'--- Turn: {t_turn:.1f}s')
+print(f'--- Move: {t_move:.1f}s')
+print(f'--- Deposit: {t_deposit:.1f}s')
+
 print(f'Trail update: {t_trail:.1f}s')
 print(f'Trail save: {t_save:.1f}s')
 
@@ -178,3 +206,4 @@ trail_save = trail_save.clip(0, 255)
 trail_save = trail_save.astype('uint8')
 
 imageio.mimwrite('output.gif', trail_save[::SKIP_FRAMES, :, :])
+
