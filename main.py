@@ -28,6 +28,8 @@ SKIP_FRAMES = 5
 ACCURACY = 3
 SD_SIN = [int(SENSE_DIST * np.sin(phi)) for phi in np.linspace(0, 2*np.pi, 1 + int(10**ACCURACY * 2 * np.pi))]
 SD_COS = [int(SENSE_DIST * np.cos(phi)) for phi in np.linspace(0, 2*np.pi, 1 + int(10**ACCURACY * 2 * np.pi))]
+SIN = [np.sin(phi) for phi in np.linspace(0, 2*np.pi, 1 + int(10**ACCURACY * 2 * np.pi))]
+COS = [np.cos(phi) for phi in np.linspace(0, 2*np.pi, 1 + int(10**ACCURACY * 2 * np.pi))]
 
 
 class Slime:
@@ -60,23 +62,23 @@ class Slime:
         self.x = int(np.sin(angle)*radius + self.grid_shape[0]/2)
         self.y = int(np.cos(angle)*radius + self.grid_shape[1]/2)
 
-    def update(self, trail, verbose=False):
-        t0 = datetime.now()
-        sensor_values = self.sense(trail, verbose)
-        t1 = datetime.now()
+    def update(self, trail):
+        # t0 = datetime.now()
+        sensor_values = self.sense(trail)
+        # t1 = datetime.now()
         self.turn(sensor_values)
-        t2 = datetime.now()
+        # t2 = datetime.now()
         self.move()
-        t3 = datetime.now()
+        # t3 = datetime.now()
         self.deposit(trail)
-        t4 = datetime.now()
+        # t4 = datetime.now()
 
-        self.t1 += (t1 - t0).total_seconds()
-        self.t2 += (t2 - t1).total_seconds()
-        self.t3 += (t3 - t2).total_seconds()
-        self.t4 += (t4 - t3).total_seconds()
+        # self.t1 += (t1 - t0).total_seconds()
+        # self.t2 += (t2 - t1).total_seconds()
+        # self.t3 += (t3 - t2).total_seconds()
+        # self.t4 += (t4 - t3).total_seconds()
 
-    def sense(self, trail_map, verbose=False):
+    def sense(self, trail_map):
         sensor_values = np.zeros((3, ))
         for i, angle in enumerate(self.sensors):
             phi = int((10**ACCURACY) * ((self.phi + angle) % (2 * np.pi)))
@@ -86,9 +88,6 @@ class Slime:
             if 0 < x < self.grid_shape[0] and 0 < y < self.grid_shape[1]:
                 sensor_values[i] = trail_map.values[(x, y)]
 
-        if verbose:
-            print(f'Slime {self.id} sensor values: {sensor_values}')
-
         return sensor_values
 
     def turn(self, sensor_values):
@@ -96,22 +95,24 @@ class Slime:
         self.phi += (direction * self.rot_speed + self.rot_random * 2 * (np.random.rand() - 0.5))
 
     def move(self):
-        self.x += int(np.sin(self.phi) * self.lat_speed)
-        self.y += int(np.cos(self.phi) * self.lat_speed)
+        phi = int((10**ACCURACY) * (self.phi % (2 * np.pi)))
+
+        self.x += int(SIN[phi] * self.lat_speed)
+        self.y += int(COS[phi] * self.lat_speed)
 
         if self.x < 0:
             self.x = 0
-            self.phi = np.arctan2(-np.sin(self.phi), np.cos(self.phi))
+            self.phi = np.arctan2(-SIN[phi], COS[phi])
         elif self.x >= self.grid_shape[0]:
             self.x = self.grid_shape[0]-1
-            self.phi = np.arctan2(-np.sin(self.phi), np.cos(self.phi))
+            self.phi = np.arctan2(-SIN[phi], COS[phi])
 
         if self.y < 0:
             self.y = 0
-            self.phi = np.arctan2(np.sin(self.phi), -np.cos(self.phi))
+            self.phi = np.arctan2(SIN[phi], -COS[phi])
         elif self.y >= self.grid_shape[1]:
             self.y = self.grid_shape[1]-1
-            self.phi = np.arctan2(np.sin(self.phi), -np.cos(self.phi))
+            self.phi = np.arctan2(SIN[phi], -COS[phi])
 
     def deposit(self, trail_map):
         trail_map.deposit(self.x, self.y)
@@ -168,7 +169,7 @@ for i in tqdm(range(N_STEPS)):
     t0 = datetime.now()
 
     for slime in slimes:
-        slime.update(trail, verbose=False)
+        slime.update(trail)
     t1 = datetime.now()
 
     if i % UPDATE_TRAIL_FRAMES == 0:
