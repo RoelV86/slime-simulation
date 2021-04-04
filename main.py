@@ -3,17 +3,16 @@
 # https://www.youtube.com/watch?v=X-iSQQgOd1A&ab_channel=SebastianLague
 
 import numpy as np
-import matplotlib.pyplot as plt
 import imageio
 from datetime import datetime
 from tqdm import tqdm
 
-SIZE = (400, 400)
-N_SLIMES = 2500
+SIZE = (600, 600)
+N_SLIMES = 16000
 SPAWN_RADIUS = 200
 
-LAT_SPEED = 3
-ROT_SPEED = 0.03
+LAT_SPEED = 2
+ROT_SPEED = 0.5  # (5/360) * 2 * np.pi
 ROT_RANDOM = (20/360) * 2 * np.pi
 SENSE_ANGLE = np.deg2rad(20)
 SENSE_DIST = 10
@@ -21,7 +20,8 @@ SENSE_DIST = 10
 DECAY_RATE = 0.9
 DECAY_LIMIT = 0.05
 
-N_STEPS = 1000
+N_STEPS = 200
+UPDATE_TRAIL_FRAMES = 1
 SKIP_FRAMES = 5
 
 
@@ -43,6 +43,11 @@ class Slime:
 
         self.sensors = [0, -sense_angle, sense_angle]
         self.sense_dist = sense_dist
+
+        self.t1 = 0
+        self.t2 = 0
+        self.t3 = 0
+        self.t4 = 0
 
     def respawn(self):
         angle = np.random.rand() * 2 * np.pi
@@ -71,13 +76,8 @@ class Slime:
         return sensor_values
 
     def turn(self, sensor_values):
-        sensor_values += 1e-3
-        sensor_values = sensor_values**2
-        sensor_values /= sum(sensor_values)
-
-        direction = np.random.choice([0, -1, 1], p=sensor_values)
-
-        self.phi += (direction + self.rot_random*2*(np.random.rand()-0.5))
+        direction = [0, -1, 1][np.argmax(sensor_values)]
+        self.phi += (direction * self.rot_speed + self.rot_random * 2 * (np.random.rand() - 0.5))
 
     def move(self):
         self.x += int(np.sin(self.phi) * self.lat_speed)
@@ -108,33 +108,28 @@ class Trail:
         self.decay_limit = decay_limit
 
     def update(self):
-        self.diffuse()
+        self.diffuse_matrix()
         self.decay()
 
     def deposit(self, x, y):
         self.values[(x, y)] += 0.3
         self.values[(x, y)] = max([self.values[(x, y)], 1])
 
-    def diffuse(self):
+    def diffuse_matrix(self):
         new_values = self.values.copy()
 
-        for coords in self.get_diffuse_coords():
-            x, y = coords
-            new_values[x, y] = np.mean(self.values[x-1:x+2, y-1:y+2])
+        new_values[:-1, :-1] += self.values[:-1, :-1]   # Top left
+        new_values[:-1, :] += self.values[:-1, :]       # Top mid
+        new_values[:-1, 1:] += self.values[:-1, 1:]     # Top right
 
-        self.values = new_values
+        new_values[:, :-1] += self.values[:, :-1]       # Mid left
+        new_values[:, 1:] += self.values[:, 1:]         # Mid right
 
-    def get_diffuse_coords(self):
-        coords = []
-        for x in range(self.values.shape[0]):
-            for y in range(self.values.shape[1]):
-                if self.values[x, y] > 0:
-                    for dx in [-1, 0, 1]:
-                        for dy in [-1, 0, 1]:
-                            if 1 <= x+dx < self.values.shape[0] and 1 <= y + dy < self.values.shape[1]:
-                                coords.append((x+dx, y+dy))
+        new_values[1:, :-1] += self.values[1:, :-1]     # Bottom left
+        new_values[1:, :] += self.values[1:, :]         # Bottom mid
+        new_values[1:, 1:] += self.values[1:, 1:]       # Bottom right
 
-        return set(coords)
+        self.values = new_values/9
 
     def decay(self):
         self.values *= self.decay_rate
@@ -148,16 +143,35 @@ slimes = [Slime(i, trail, LAT_SPEED, ROT_SPEED, ROT_RANDOM, SENSE_ANGLE, SENSE_D
 trail_save = np.zeros((N_STEPS, SIZE[0], SIZE[1]))
 
 # Run simulation
+t_slime = 0
+t_trail = 0
+t_save = 0
+
 t_start = datetime.now()
 for i in tqdm(range(N_STEPS)):
+    t0 = datetime.now()
+
     for slime in slimes:
         slime.update(trail, verbose=False)
+    t1 = datetime.now()
 
-    trail.update()
+    if i % UPDATE_TRAIL_FRAMES == 0:
+        trail.update()
+    t2 = datetime.now()
+
     trail_save[i, :, :] = (255*trail.values)
+    t3 = datetime.now()
+
+    t_slime += (t1 - t0).total_seconds()
+    t_trail += (t2 - t1).total_seconds()
+    t_save += (t3 - t2).total_seconds()
 
 dt_simulation = (datetime.now()-t_start).total_seconds()
 print(f'Time taken: {dt_simulation/N_STEPS}s per step')
+
+print(f'Slime update: {t_slime:.1f}s')
+print(f'Trail update: {t_trail:.1f}s')
+print(f'Trail save: {t_save:.1f}s')
 
 # Visualize
 trail_save = trail_save.clip(0, 255)
